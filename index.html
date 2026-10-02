@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Server 組裝廠｜SLP 最終佈置模擬</title>
+<meta name="description" content="製造管理與決策 作業二：以 Muther SLP 規劃之 AI Server 組裝廠最終佈置，離散事件模擬（SimPy）全流程視覺化。">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <p class="eyebrow">製造管理與決策・作業二｜王建皓 113704062</p>
+    <h1>AI Server 組裝廠：最終佈置的全流程模擬</h1>
+    <p class="lede">60 m × 40 m 廠房、每日 60 台（1U 30、2U 20、GPU 10）。下方是 Python／SimPy 離散事件模擬的實際事件紀錄回放——每一個點都是一台 Server，從收料、備料、組裝、測試燒機、品檢、包裝到出貨，所有搬運都沿著佈置中的真實通道行走。</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="viewer" aria-label="模擬回放">
+    <div class="stage">
+      <div class="scen" role="tablist" aria-label="情境">
+        <button class="scen-btn active" data-s="final2" role="tab">最終佈置・加開中班<span>建議方案</span></button>
+        <button class="scen-btn" data-s="final1" role="tab">最終佈置・單班<span>跨夜卡位問題</span></button>
+        <button class="scen-btn" data-s="A2" role="tab">Layout A・改善前<span>對照組</span></button>
+      </div>
+      <div class="canvas-box"><canvas id="plan" aria-label="工廠平面與即時物流"></canvas></div>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <aside class="panel">
+      <div class="clock-card">
+        <div class="clock-row">
+          <div><div class="clock-day" id="cDay">第 1 天</div><div class="clock" id="cTime">08:00</div></div>
+          <div class="phase" id="cPhase">日班</div>
+        </div>
+        <div class="controls">
+          <button id="bPlay" class="btn primary" aria-label="播放">▶ 播放</button>
+          <label class="speed">速度
+            <select id="sSpeed">
+              <option value="15">15 分/秒</option>
+              <option value="30">30 分/秒</option>
+              <option value="60" selected>60 分/秒</option>
+              <option value="120">120 分/秒</option>
+              <option value="240">240 分/秒</option>
+            </select>
+          </label>
+        </div>
+        <input type="range" id="rTime" min="0" max="4320" step="1" value="0" aria-label="時間軸">
+        <div class="jumps">
+          <button class="chip" data-j="0">08:00 上班</button>
+          <button class="chip" data-j="440">15:20 下班前</button>
+          <button class="chip" data-j="510">16:30 下班後</button>
+          <button class="chip" data-j="1000">00:40 深夜</button>
+          <button class="chip" data-j="1380">07:00 隔天上班前</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>今日出貨</h3>
+        <div id="ship"></div>
+      </div>
+
+      <div class="card two">
+        <div><div class="kpi" id="kWip">0</div><div class="kpi-l">廠內在製品（台）</div></div>
+        <div><div class="kpi" id="kTot">0</div><div class="kpi-l">累計出貨（台）</div></div>
+      </div>
+
+      <div class="card">
+        <h3>1U/2U 燒機槽位 <span class="muted" id="slotTxt"></span></h3>
+        <div class="cells" id="slots"></div>
+        <h3 class="mt">GPU 測試灣 <span class="muted" id="bayTxt"></span></h3>
+        <div class="cells bays" id="bays"></div>
+        <div class="mini-leg"><i class="sw run"></i>燒機中 <i class="sw done"></i>已完成、等人卸 <i class="sw empty"></i>空位</div>
+      </div>
+
+      <div class="card">
+        <h3>搬運資源（使用中）</h3>
+        <div class="res" id="res"></div>
+      </div>
+
+      <div class="card">
+        <h3>每日出貨 vs 需求 60</h3>
+        <canvas id="days" height="120" aria-label="每日出貨長條圖"></canvas>
+      </div>
+    </aside>
+  </section>
+
+  <section class="note" id="scenNote"></section>
+
+  <section>
+    <h2>全流程：一台 Server 會經過哪些站</h2>
+    <ol class="flow">
+      <li><b>收貨 → IQC → 倉儲</b><span>進料以棧板由搬運人員送 IQC 抽驗、入庫；高價料（CPU/GPU/DIMM）進管制籠。</span></li>
+      <li><b>Kitting 備料</b><span>2 人以流利架＋Pick-to-Light 配套，每台 6／8／18 分（1U／2U／GPU）。</span></li>
+      <li><b>1U/2U 組裝</b><span>AMR 以 Kit 車（2 套/車）送到 2 個 U 型 Cell，每 Cell 3 人；人工 35／50 分。</span></li>
+      <li><b>GPU 組裝</b><span>AMR 送高價料箱與機箱；固定位組裝灣，2 人一組、人工 150 分；升降台車（2 人）送測試灣。</span></li>
+      <li><b>1U/2U 測試燒機</b><span>機架台車（4 台/車）送 FCT（20／25 分），再上燒機槽位 4 h／6 h，共 32 槽。</span></li>
+      <li><b>GPU 測試灣</b><span>FCT 45 分＋燒機 8 h，共 7 灣；不良（10%）在測試區原位除錯，FQA 也在區內完成。</span></li>
+      <li><b>FQA → 包裝</b><span>1U/2U 經 FQA 後以 AMR 送包裝（2 站），GPU 以木箱站（1 站）包裝。</span></li>
+      <li><b>出貨</b><span>1U/2U 每 6 台成一板、GPU 每台一箱，由搬運人員送出貨月台。</span></li>
+      <li><b>重工迴路</b><span>1U/2U 燒機不良 5% 送維修後重測；FQA 不良 2%。</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>看什麼：三個關鍵時刻</h2>
+    <div class="look">
+      <article>
+        <h3>① 下班後的測試區</h3>
+        <p>切到「最終佈置・單班」，跳到隔天上班前 07:00：GPU 測試灣與燒機槽位大多變成斜線（已燒完、等人卸）。GPU 一輪約 8.8 小時，比整個班還長，上午裝上的機台下班後才燒完，整夜空等；單班時每灣每天只能跑 1 輪，GPU 只做得出約 6.8 台/日，等待測試的 GPU 在測試區堆積。</p>
+        <button class="chip" data-go="final1" data-j="1380">去看 →</button>
+      </article>
+      <article>
+        <h3>② 加開中班後</h3>
+        <p>同一時刻切回「加開中班」：15:30–23:00 有測試技術員裝卸，晚上燒完的機台當班就卸下、再裝下一台，灣位不再空等，7 灣就能每天跑 2 輪，GPU 回到 10 台/日。這是報告 9.2 節的核心發現。</p>
+        <button class="chip" data-go="final2" data-j="1380">去看 →</button>
+      </article>
+      <article>
+        <h3>③ 早上的搬運尖峰</h3>
+        <p>08:00–10:00 前一晚燒完的機台、早上的進料與 Kitting 補料同時湧現。比較 Layout A 與最終佈置的搬運路線長度與同時在路上的搬運數。</p>
+        <button class="chip" data-go="A2" data-j="20">看 Layout A →</button>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>一個月的平均結果（20 次重複模擬）</h2>
+    <div class="table-wrap"><table id="tbl"></table></div>
+    <p class="small">每個情境模擬 25 個工作日（前 5 日暖機不計），重複 20 次取平均。上方回放為其中一次模擬的第 6–8 天，數字會與月平均略有差異。</p>
+  </section>
+
+  <section class="model">
+    <h2>模型說明</h2>
+    <ul>
+      <li>工具：Python 3＋SimPy 4.1 離散事件模擬；本頁以 JavaScript 回放模擬產生的事件紀錄（每一次開始、完成、搬運皆來自模型）。</li>
+      <li>作業時間：三角分配 Tri(0.85t, t, 1.35t)，t 為報告表 4-1 標準時間；燒機為固定機台時間，可跨夜。</li>
+      <li>工作時窗：人工作業每日 450 分（08:00–15:30，休息已扣除）；加開中班時，測試裝卸延長至 23:00。</li>
+      <li>搬運：AMR 2 台（48 m/分）、搬運人員 3 人（40 m/分），GPU 升降台車需 2 人；路徑為 1 m 網格沿通道的最短路徑。</li>
+      <li>限制：未模擬通道上的實體壅塞與避讓；畫面上的排隊位置為示意，不代表實際擺放。</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="wrap foot">製造管理與決策 作業二｜系統化佈置規劃（Muther SLP）與離散事件模擬</footer>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
