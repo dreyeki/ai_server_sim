@@ -5,7 +5,9 @@
 
 ##  GitHub Pages
 
-網址是https://dreyeki.github.io/ai_server_sim/，打開就能看到完整模擬
+網址是
+https://dreyeki.github.io/ai_server_sim/
+打開就能看到完整模擬
 
 也可以直接用瀏覽器打開 `index.html` 即可（資料以 `data.js` 載入，不需要架伺服器）。
 
